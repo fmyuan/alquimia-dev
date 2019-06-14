@@ -70,6 +70,7 @@ extern "C" {
     int num_surface_sites;
     int num_ion_exchange_sites;
     int num_isotherm_species;
+    int num_immobile_species;
     int num_aux_integers;
     int num_aux_doubles;
   } AlquimiaSizes;
@@ -81,6 +82,7 @@ extern "C" {
     double aqueous_pressure; /* [Pa] */
     AlquimiaVectorDouble total_mobile;  /* [molarity] */
     AlquimiaVectorDouble total_immobile;  /* [moles/m^3 bulk] */
+    AlquimiaVectorDouble total_immobile_species; /* [moles/m^3 bulk] */ 
     AlquimiaVectorDouble mineral_volume_fraction;  /* [-] */
     AlquimiaVectorDouble mineral_specific_surface_area; /* [m^2 mineral/m^3 bulk] */
     AlquimiaVectorDouble surface_site_density;  /* [moles/m^3 bulk] */
@@ -125,6 +127,7 @@ extern "C" {
     AlquimiaVectorString primary_names;
     AlquimiaVectorInt    positivity;
     AlquimiaVectorString mineral_names;
+    AlquimiaVectorString immobile_species_names;
     AlquimiaVectorString surface_site_names;
     AlquimiaVectorString ion_exchange_names;
     AlquimiaVectorString isotherm_species_names;

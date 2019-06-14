@@ -100,6 +100,7 @@ module AlquimiaContainers_module
      integer (c_int) :: num_surface_sites
      integer (c_int) :: num_ion_exchange_sites
      integer (c_int) :: num_isotherm_species
+     integer (c_int) :: num_immobile_species
      integer (c_int) :: num_aux_integers
      integer (c_int) :: num_aux_doubles
   end type AlquimiaSizes
@@ -111,6 +112,7 @@ module AlquimiaContainers_module
      real (c_double) :: aqueous_pressure
      type (AlquimiaVectorDouble) :: total_mobile
      type (AlquimiaVectorDouble) :: total_immobile
+     type (AlquimiaVectorDouble) :: total_immobile_species
      type (AlquimiaVectorDouble) :: mineral_volume_fraction
      type (AlquimiaVectorDouble) :: mineral_specific_surface_area
      type (AlquimiaVectorDouble) :: surface_site_density
@@ -142,6 +144,7 @@ module AlquimiaContainers_module
      integer (c_int) :: num_newton_iterations
   end type AlquimiaEngineStatus
 
+! If including immobile species, do we need to check if engine can handle those?
   type, public, bind(c) :: AlquimiaEngineFunctionality
      logical (c_bool) :: thread_safe
      logical (c_bool) :: temperature_dependent
@@ -156,6 +159,7 @@ module AlquimiaContainers_module
      type (AlquimiaVectorString) :: primary_names
      type (AlquimiaVectorInt)    :: positivity
      type (AlquimiaVectorString) :: mineral_names
+     type (AlquimiaVectorString) :: immobile_species_names
      type (AlquimiaVectorString) :: surface_site_names
      type (AlquimiaVectorString) :: ion_exchange_names
      type (AlquimiaVectorString) :: isotherm_species_names
@@ -171,7 +175,10 @@ module AlquimiaContainers_module
      type (AlquimiaVectorDouble) :: primary_activity_coeff
      type (AlquimiaVectorDouble) :: secondary_free_ion_concentration
      type (AlquimiaVectorDouble) :: secondary_activity_coeff
+     ! Should there be a place in here to store secondary species names?
   end type AlquimiaAuxiliaryOutputData
+  
+  ! Do we need constraints for immobile (biomass, SOM) species?
 
   type, public, bind(c) :: AlquimiaAqueousConstraint
      type (c_ptr) :: primary_species_name
