@@ -151,8 +151,6 @@ void AllocateAlquimiaState(const AlquimiaSizes* const sizes,
   AllocateAlquimiaVectorDouble(sizes->num_primary, &(state->total_mobile));
   ALQUIMIA_ASSERT(state->total_mobile.data != NULL);
 
-  AllocateAlquimiaVectorDouble(sizes->num_immobile_species, &(state->total_immobile_species));
-  
   AllocateAlquimiaVectorDouble(sizes->num_sorbed, &(state->total_immobile));
 
   AllocateAlquimiaVectorDouble(sizes->num_surface_sites,
@@ -171,7 +169,6 @@ void AllocateAlquimiaState(const AlquimiaSizes* const sizes,
 void FreeAlquimiaState(AlquimiaState* state) {
   if (state != NULL) {
     FreeAlquimiaVectorDouble(&(state->total_mobile));
-    FreeAlquimiaVectorDouble(&(state->total_immobile_species));
     FreeAlquimiaVectorDouble(&(state->total_immobile));
     FreeAlquimiaVectorDouble(&(state->mineral_volume_fraction));
     FreeAlquimiaVectorDouble(&(state->mineral_specific_surface_area));
@@ -251,9 +248,6 @@ void AllocateAlquimiaProblemMetaData(const AlquimiaSizes* const sizes,
 
   AllocateAlquimiaVectorString(sizes->num_minerals,
                                &(meta_data->mineral_names));
-                               
-  AllocateAlquimiaVectorString(sizes->num_immobile_species,
-                              &(meta_data->immobile_species_names));
 
   AllocateAlquimiaVectorString(sizes->num_surface_sites,
                                &(meta_data->surface_site_names));
@@ -275,7 +269,6 @@ void FreeAlquimiaProblemMetaData(AlquimiaProblemMetaData* meta_data) {
     FreeAlquimiaVectorString(&(meta_data->primary_names));
     FreeAlquimiaVectorInt(&(meta_data->positivity));
     FreeAlquimiaVectorString(&(meta_data->mineral_names));
-    FreeAlquimiaVectorString(&(meta_data->immobile_species_names));
     FreeAlquimiaVectorString(&(meta_data->surface_site_names));
     FreeAlquimiaVectorString(&(meta_data->ion_exchange_names));
     FreeAlquimiaVectorString(&(meta_data->isotherm_species_names));

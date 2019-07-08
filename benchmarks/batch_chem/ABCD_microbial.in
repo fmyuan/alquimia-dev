@@ -74,13 +74,13 @@ CHEMISTRY
     RATE_CONSTANT 1.d-9
   /
   DATABASE ./microbial.dat
-  LOG_FORMULATION
+  #LOG_FORMULATION
   ACTIVITY_COEFFICIENTS OFF
   OUTPUT
     ALL
     TOTAL
   /
-  MAX_RESIDUAL_TOLERANCE 1.d-12
+  MAX_RESIDUAL_TOLERANCE 1.d-15
 END
 
 skip
@@ -126,9 +126,9 @@ END
 
 #=========================== times ============================================
 TIME
-  FINAL_TIME 25.d0 y            ! A(aq) at 50m midpoint
+  FINAL_TIME 20.d0 h            ! A(aq) at 50m midpoint
   INITIAL_TIMESTEP_SIZE 1.d0 h
-  MAXIMUM_TIMESTEP_SIZE 2.5d-1 y
+  MAXIMUM_TIMESTEP_SIZE 1.d0 h
 #  MAXIMUM_TIMESTEP_SIZE 1.d-3 y
 END
 

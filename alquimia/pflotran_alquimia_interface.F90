@@ -529,8 +529,6 @@ subroutine ReactionStepOperatorSplit(pft_engine_state, &
        porosity, &
        state, aux_data)
 
-   
-       
   ! Copy the diagnostic information into the status object.
   ! PFlotran doesn't do anything really fancy in its Newton step, so
   ! the numbers of RHS evaluations, Jacobian evaluations, and Newton 
@@ -636,15 +634,23 @@ subroutine GetAuxiliaryOutput( &
   !
   call c_f_pointer(aux_output%primary_free_ion_concentration%data, local_array, &
        (/aux_output%primary_free_ion_concentration%size/))
-  do i = 1, aux_output%primary_free_ion_concentration%size
+  do i = 1, engine_state%reaction%naqcomp
      local_array(i) = engine_state%rt_auxvar%pri_molal(i)
   end do
+  ! Immobile species have zero free ion conc by definition
+  do i = 1, engine_state%reaction%immobile%nimmobile
+    local_array(i+engine_state%reaction%offset_immobile) = 0.0
+ end do
 
   call c_f_pointer(aux_output%primary_activity_coeff%data, local_array, &
        (/aux_output%primary_activity_coeff%size/))
   do i = 1, aux_output%primary_activity_coeff%size
      local_array(i) = engine_state%rt_auxvar%pri_act_coef(i)
   end do
+  ! Immobile species have zero primary activity
+  do i = 1, engine_state%reaction%naqcomp
+    local_array(i+engine_state%reaction%offset_immobile) = 0.0
+   end do
 
   !
   ! secondary aqueous complex data
@@ -708,12 +714,12 @@ subroutine GetProblemMetaData(pft_engine_state, meta_data, status)
 
 ! In Pflotran, reaction%ncomp includes primary species, colloids, and immobile species
 ! so if a simulation includes colloids or immobile species, this may need to change to reaction%naqcomp
-  if (meta_data%primary_names%size /= engine_state%reaction%naqcomp) then
+  if (meta_data%primary_names%size /= engine_state%reaction%ncomp) then
      write (*, '(a, i3, a, i3, a)') "meta_data%primary_names%size (", &
-          meta_data%primary_names%size, ") != pflotran%reaction%naqcomp(", &
-          engine_state%reaction%naqcomp, ")"
+          meta_data%primary_names%size, ") != pflotran%reaction%ncomp(", &
+          engine_state%reaction%ncomp, ")"
   end if
-  list_size = meta_data%primary_names%size
+  list_size = engine_state%reaction%naqcomp
 
   pflotran_names => engine_state%reaction%primary_species_names
 
@@ -724,14 +730,27 @@ subroutine GetProblemMetaData(pft_engine_state, meta_data, status)
           name, kAlquimiaMaxStringLength)     
   end do
 
+  ! Immobile species names
+  list_size = engine_state%reaction%ncomp
+  
+  pflotran_names => engine_state%reaction%immobile%names
+  
+  call c_f_pointer(meta_data%primary_names%data, name_list, (/list_size/))
+  do i = 1, engine_state%reaction%immobile%nimmobile
+     call c_f_pointer(name_list(i+engine_state%reaction%offset_immobile), name)
+     call f_c_string_chars(trim(pflotran_names(i)), &
+          name, kAlquimiaMaxStringLength)     
+  end do
+
+
 !
 ! positivity constraints
 !
 
-  if (meta_data%positivity%size /= engine_state%reaction%naqcomp) then
+  if (meta_data%positivity%size /= engine_state%reaction%ncomp) then
      write (*, '(a, i3, a, i3, a)') "meta_data%positivity%size (", &
-          meta_data%positivity%size, ") != pflotran%reaction%naqcomp(", &
-          engine_state%reaction%naqcomp, ")"
+          meta_data%positivity%size, ") != pflotran%reaction%ncomp(", &
+          engine_state%reaction%ncomp, ")"
       stop
   end if
   list_size = meta_data%positivity%size
@@ -760,23 +779,6 @@ subroutine GetProblemMetaData(pft_engine_state, meta_data, status)
   pflotran_names => engine_state%reaction%mineral%mineral_names
 
   call c_f_pointer(meta_data%mineral_names%data, name_list, (/list_size/))
-  do i = 1, list_size
-     call c_f_pointer(name_list(i), name)
-     call f_c_string_chars(trim(pflotran_names(i)), &
-          name, kAlquimiaMaxStringLength)     
-  end do
-
-  ! Immobile species names
-  if (meta_data%immobile_species_names%size /= engine_state%reaction%immobile%nimmobile) then
-     write (*, '(a, i3, a, i3, a)') "meta_data%immobile_species_names%size (", &
-          meta_data%immobile_species_names%size, ") != pflotran%reaction%immobile%nimmobile(", &
-          engine_state%reaction%immobile%nimmobile, ")"
-  end if
-  list_size = meta_data%immobile_species_names%size
-  
-  pflotran_names => engine_state%reaction%immobile%names
-
-  call c_f_pointer(meta_data%immobile_species_names%data, name_list, (/list_size/))
   do i = 1, list_size
      call c_f_pointer(name_list(i), name)
      call f_c_string_chars(trim(pflotran_names(i)), &
@@ -952,9 +954,9 @@ subroutine SetAlquimiaSizes(reaction, sizes)
   type (AlquimiaSizes), intent(out) :: sizes
 
 ! This may need to change to reaction%naqcomp if there are colloids and/or immobile species defined
-  sizes%num_primary = reaction%naqcomp
-  if (reaction%nsorb > 0) then
-     sizes%num_sorbed = reaction%naqcomp
+  sizes%num_primary = reaction%ncomp
+  if (reaction%nsorb > 0 .or. reaction%immobile%nimmobile > 0) then
+     sizes%num_sorbed = reaction%ncomp
   else
      sizes%num_sorbed = 0
   end if
@@ -965,12 +967,12 @@ subroutine SetAlquimiaSizes(reaction, sizes)
   sizes%num_ion_exchange_sites = reaction%neqionxrxn
   sizes%num_isotherm_species = reaction%neqkdrxn
   
-  ! Get number of immobile species if any are present
-  if(associated(reaction%immobile)) then
-    sizes%num_immobile_species = reaction%immobile%nimmobile
-  else
-    sizes%num_immobile_species = 0
-  endif
+  ! ! Get number of immobile species if any are present
+  ! if(associated(reaction%immobile)) then
+  !   sizes%num_immobile_species = reaction%immobile%nimmobile
+  ! else
+  !   sizes%num_immobile_species = 0
+  ! endif
 
   call GetAuxiliaryDataSizes(reaction, &
        sizes%num_aux_integers, sizes%num_aux_doubles)
@@ -1497,9 +1499,9 @@ subroutine CopyAlquimiaToAuxVars(copy_auxdata, hands_off, &
   
   ! immobile species
   if (reaction%immobile%nimmobile > 0) then
-     call c_f_pointer(state%total_immobile_species%data, data, (/reaction%immobile%nimmobile/))
+     call c_f_pointer(state%total_immobile%data, data, (/reaction%ncomp/))
      do i = 1, reaction%immobile%nimmobile
-        rt_auxvar%immobile(i) = data(i)
+        rt_auxvar%immobile(i) = data(i + reaction%offset_immobile)
      end do
   end if
 
@@ -1651,9 +1653,9 @@ subroutine CopyAuxVarsToAlquimia(reaction, global_auxvar, rt_auxvar, &
   ! immobile species
   !
   if (reaction%immobile%nimmobile > 0) then
-     call c_f_pointer(state%total_immobile_species%data, data, (/reaction%immobile%nimmobile/))
+     call c_f_pointer(state%total_immobile%data, data, (/reaction%ncomp/))
      do i = 1, reaction%immobile%nimmobile
-        data(i) = rt_auxvar%immobile(i)
+        data(i + reaction%offset_immobile) = rt_auxvar%immobile(i)
      end do
   end if
   !
@@ -1730,7 +1732,7 @@ subroutine GetAuxiliaryDataSizes(reaction, num_ints, num_doubles)
   num_ints = 0
 
   num_doubles = &
-       2 * reaction%naqcomp + &
+       2 * reaction%ncomp + &
        reaction%neqcplx + &
        reaction%neqionxrxn + &
        reaction%surface_complexation%nsrfcplxrxn
@@ -1766,11 +1768,24 @@ subroutine PackAlquimiaAuxiliaryData(reaction, rt_auxvar, aux_data)
      dindex = dindex + 1
      data(dindex) = rt_auxvar%pri_molal(i)
   end do
+  
+  ! Fake these (0) for immobile species
+  ! free ion
+  do i = 1, reaction%immobile%nimmobile
+     dindex = dindex + 1
+     data(dindex) = 0.0
+  end do
 
   ! primary activity coeff
   do i = 1, reaction%naqcomp
      dindex = dindex + 1
      data(dindex) = rt_auxvar%pri_act_coef(i)
+  end do
+  
+  ! Fake it for immobile species
+  do i = 1, reaction%immobile%nimmobile
+     dindex = dindex + 1
+     data(dindex) = 0.0
   end do
 
   ! secondary aqueous complexe activity coeffs
@@ -1824,12 +1839,16 @@ subroutine UnpackAlquimiaAuxiliaryData(aux_data, reaction, rt_auxvar)
      rt_auxvar%pri_molal(i) = data(dindex)
   end do
 
+  ! Skip immobile species, which driver model thinks are primary species
+  dindex = dindex + reaction%immobile%nimmobile
 
   ! primary activity coeff
   do i = 1, reaction%naqcomp
      dindex = dindex + 1
      rt_auxvar%pri_act_coef(i) = data(dindex)
   end do
+  
+  dindex = dindex + reaction%immobile%nimmobile
 
   ! aqueous complexes activity coeff
   do i = 1, reaction%neqcplx
@@ -1875,7 +1894,7 @@ subroutine PrintSizes(sizes)
   write (*, '(a, i4)') "  num aqueous complexes : ", sizes%num_aqueous_complexes
   write (*, '(a, i4)') "  num surface sites : ", sizes%num_surface_sites
   write (*, '(a, i4)') "  num ion exchange sites : ", sizes%num_ion_exchange_sites
-  write (*, '(a, i4)') "  num immobile species : ", sizes%num_immobile_species
+  ! write (*, '(a, i4)') "  num immobile species : ", sizes%num_immobile_species
 end subroutine PrintSizes
 
 
@@ -1910,16 +1929,16 @@ subroutine PrintState(state)
   do i=1, state%total_mobile%size
      write (*, '(1es13.6)') conc(i)
   end do
-    write (*, '(a, i4, a)') "  total sorbed (", state%total_immobile%size, ") : "
+    write (*, '(a, i4, a)') "  total immobile (", state%total_immobile%size, ") : "
   call c_f_pointer(state%total_immobile%data, immo, (/state%total_immobile%size/))
   do i=1, state%total_immobile%size
      write (*, '(1es13.6)') immo(i)
   end do
-  write (*, '(a, i4, a)') "  total immobile species (", state%total_immobile_species%size, ") : "
-  call c_f_pointer(state%total_immobile_species%data, immo, (/state%total_immobile_species%size/))
-  do i=1, state%total_immobile_species%size
-     write (*, '(1es13.6)') immo(i)
-  end do
+  ! write (*, '(a, i4, a)') "  total immobile species (", state%total_immobile_species%size, ") : "
+  ! call c_f_pointer(state%total_immobile_species%data, immo, (/state%total_immobile_species%size/))
+  ! do i=1, state%total_immobile_species%size
+  !    write (*, '(1es13.6)') immo(i)
+  ! end do
   write (*, '(a, i4, a)') "  mineral volume fraction (", state%mineral_volume_fraction%size, ") : "
   call c_f_pointer(state%mineral_volume_fraction%data, vofx, (/state%mineral_volume_fraction%size/))
   do i=1, state%mineral_volume_fraction%size
