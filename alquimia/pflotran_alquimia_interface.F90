@@ -648,7 +648,7 @@ subroutine GetAuxiliaryOutput( &
      local_array(i) = engine_state%rt_auxvar%pri_act_coef(i)
   end do
   ! Immobile species have zero primary activity
-  do i = 1, engine_state%reaction%naqcomp
+  do i = 1, engine_state%reaction%immobile%nimmobile
     local_array(i+engine_state%reaction%offset_immobile) = 0.0
    end do
 
