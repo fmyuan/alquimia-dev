@@ -1338,15 +1338,16 @@ function ConvertAlquimiaConditionToPflotran(&
   type (tran_constraint_type), pointer :: ConvertAlquimiaConditionToPflotran
 
   ! local variables
-  integer :: i
+  integer :: i,i_all,i_immobile,jimmobile
   character (kAlquimiaMaxStringLength) :: name, constraint_type
   character (kAlquimiaMaxStringLength) :: associated_species
   type (tran_constraint_type), pointer :: tran_constraint
   type(aq_species_constraint_type), pointer :: pft_aq_species_constraint
   type(mineral_constraint_type), pointer :: pft_mineral_constraint
+  type(immobile_constraint_type), pointer :: pft_immobile_species_constraint
   type (AlquimiaAqueousConstraint), pointer :: alq_aqueous_constraints(:)
   type (AlquimiaMineralConstraint), pointer :: alq_mineral_constraints(:)
-
+  logical :: is_immobile
 
   call c_f_string_ptr(alquimia_condition%name, name)
   option%io_buffer = "building : " // trim(name)
@@ -1359,7 +1360,7 @@ function ConvertAlquimiaConditionToPflotran(&
   !
   ! aqueous species
   !
-  if (alquimia_condition%aqueous_constraints%size /= reaction%naqcomp) then
+  if (alquimia_condition%aqueous_constraints%size /= reaction%naqcomp+reaction%immobile%nimmobile) then
      option%io_buffer = 'Number of aqueous constraints ' // &
           'does not equal the number of primary chemical ' // &
           'components in constraint: ' // &
@@ -1370,52 +1371,77 @@ function ConvertAlquimiaConditionToPflotran(&
   ! NOTE(bja) : this is the container for ALL aqueous constraints
   pft_aq_species_constraint => &
        AqueousSpeciesConstraintCreate(reaction, option)
+       
+  pft_immobile_species_constraint => &
+      ImmobileConstraintCreate(reaction%immobile, option)
 
   call c_f_pointer(alquimia_condition%aqueous_constraints%data, &
        alq_aqueous_constraints, (/alquimia_condition%aqueous_constraints%size/))
 
-  do i = 1, alquimia_condition%aqueous_constraints%size
-     call c_f_string_ptr(alq_aqueous_constraints(i)%primary_species_name, name)
-     pft_aq_species_constraint%names(i) = trim(name)
-
-     pft_aq_species_constraint%constraint_conc(i) = alq_aqueous_constraints(i)%value
-
-     call c_f_string_ptr(alq_aqueous_constraints(i)%constraint_type, constraint_type)
-
-     call c_f_string_ptr(alq_aqueous_constraints(i)%associated_species, &
-          associated_species)
-
-     if (StringCompareIgnoreCase(constraint_type, kAlquimiaStringFree)) then
-        pft_aq_species_constraint%constraint_type(i) = CONSTRAINT_FREE
-
-     else if (StringCompareIgnoreCase(constraint_type, kAlquimiaStringTotalAqueous)) then
-        pft_aq_species_constraint%constraint_type(i) = CONSTRAINT_TOTAL
-
-     else if (StringCompareIgnoreCase(constraint_type, kAlquimiaStringTotalSorbed)) then
-        pft_aq_species_constraint%constraint_type(i) = CONSTRAINT_TOTAL_SORB
-     else if (StringCompareIgnoreCase(constraint_type, kAlquimiaStringPH)) then
-        pft_aq_species_constraint%constraint_type(i) = CONSTRAINT_PH
-
-     else if (StringCompareIgnoreCase(constraint_type, kAlquimiaStringMineral)) then
-        pft_aq_species_constraint%constraint_type(i) = CONSTRAINT_MINERAL
-        pft_aq_species_constraint%constraint_aux_string(i) = &
-             trim(associated_species)
-
-     else if (StringCompareIgnoreCase(constraint_type, kAlquimiaStringGas)) then
-        pft_aq_species_constraint%constraint_type(i) = CONSTRAINT_GAS
-        pft_aq_species_constraint%constraint_aux_string(i) = &
-             trim(associated_species)
-
-     else if (StringCompareIgnoreCase(constraint_type, kAlquimiaStringCharge)) then
-        pft_aq_species_constraint%constraint_type(i) = CONSTRAINT_CHARGE_BAL
-
+  i_immobile=0
+  i=0
+  do i_all = 1, alquimia_condition%aqueous_constraints%size
+     call c_f_string_ptr(alq_aqueous_constraints(i_all)%primary_species_name, name)
+     
+     ! Check if it is an immobile species
+     is_immobile = .FALSE.
+     do jimmobile = 1, reaction%immobile%nimmobile
+        if (StringCompareIgnoreCase(name, &
+                          reaction%immobile%names(jimmobile), &
+                          MAXWORDLENGTH)) then
+          is_immobile = .TRUE.
+          exit
+        endif
+      enddo
+     
+     if(is_immobile) then
+       i_immobile=i_immobile+1
+       pft_immobile_species_constraint%names(i_immobile) = trim(name)
+       pft_immobile_species_constraint%constraint_conc(i_immobile) = alq_aqueous_constraints(i_all)%value
      else
-        option%io_buffer = 'Constraint type: ' // trim(constraint_type) // &
-             ' not recognized in constraint,concentration'
-        call printErrMsg(option)
+       i=i+1
+       pft_aq_species_constraint%names(i) = trim(name)
+
+       pft_aq_species_constraint%constraint_conc(i) = alq_aqueous_constraints(i_all)%value
+      
+       call c_f_string_ptr(alq_aqueous_constraints(i_all)%constraint_type, constraint_type)
+
+       call c_f_string_ptr(alq_aqueous_constraints(i_all)%associated_species, &
+            associated_species)
+
+       if (StringCompareIgnoreCase(constraint_type, kAlquimiaStringFree)) then
+          pft_aq_species_constraint%constraint_type(i) = CONSTRAINT_FREE
+
+       else if (StringCompareIgnoreCase(constraint_type, kAlquimiaStringTotalAqueous)) then
+          pft_aq_species_constraint%constraint_type(i) = CONSTRAINT_TOTAL
+
+       else if (StringCompareIgnoreCase(constraint_type, kAlquimiaStringTotalSorbed)) then
+          pft_aq_species_constraint%constraint_type(i) = CONSTRAINT_TOTAL_SORB
+       else if (StringCompareIgnoreCase(constraint_type, kAlquimiaStringPH)) then
+          pft_aq_species_constraint%constraint_type(i) = CONSTRAINT_PH
+
+       else if (StringCompareIgnoreCase(constraint_type, kAlquimiaStringMineral)) then
+          pft_aq_species_constraint%constraint_type(i) = CONSTRAINT_MINERAL
+          pft_aq_species_constraint%constraint_aux_string(i) = &
+               trim(associated_species)
+
+       else if (StringCompareIgnoreCase(constraint_type, kAlquimiaStringGas)) then
+          pft_aq_species_constraint%constraint_type(i) = CONSTRAINT_GAS
+          pft_aq_species_constraint%constraint_aux_string(i) = &
+               trim(associated_species)
+
+       else if (StringCompareIgnoreCase(constraint_type, kAlquimiaStringCharge)) then
+          pft_aq_species_constraint%constraint_type(i) = CONSTRAINT_CHARGE_BAL
+
+       else
+          option%io_buffer = 'Constraint type: ' // trim(constraint_type) // &
+               ' not recognized in constraint,concentration'
+          call printErrMsg(option)
+       end if
      end if
   end do
   tran_constraint%aqueous_species => pft_aq_species_constraint
+  tran_constraint%immobile_species => pft_immobile_species_constraint
 
   !
   ! minerals
@@ -1442,6 +1468,8 @@ function ConvertAlquimiaConditionToPflotran(&
           alq_mineral_constraints(i)%volume_fraction
      pft_mineral_constraint%constraint_area(i) = &
           alq_mineral_constraints(i)%specific_surface_area
+      pft_mineral_constraint%constraint_area_units(i) = 'm^2/m^3'
+      
   end do
   tran_constraint%minerals => pft_mineral_constraint
 
