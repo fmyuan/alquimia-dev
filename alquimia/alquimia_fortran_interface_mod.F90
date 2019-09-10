@@ -8,7 +8,7 @@ module alquimia_fortran_interface_mod
            
   implicit none
   
-  type, public, bind(c) :: AlquimiaInterface
+  type, bind(c) :: AlquimiaInterface
     
     type(c_funptr) :: Setup
     type(c_funptr) :: Shutdown
@@ -19,7 +19,18 @@ module alquimia_fortran_interface_mod
   
   end type AlquimiaInterface
    
-
+  type, public :: AlquimiaFortranInterface
+    type(AlquimiaInterface) :: c_interface
+    
+  contains
+    procedure, public :: CreateInterface => Create_Fortran_Alquimia_Interface
+    procedure, public :: Setup  =>  Alquimia_Fortran_setup
+    procedure, public :: Shutdown  => Alquimia_Fortran_Shutdown
+    procedure, public :: ProcessCondition  => Alquimia_Fortran_ProcessCondition
+    procedure, public :: ReactionStepOperatorSplit  => Alquimia_Fortran_ReactionStepOperatorSplit
+    procedure, public :: GetAuxiliaryOutput  => Alquimia_Fortran_GetAuxiliaryOutput
+    procedure, public :: GetProblemMetaData  => Alquimia_Fortran_GetProblemMetaData
+  end type AlquimiaFortranInterface
   
   interface
     subroutine CreateAlquimiaInterface(engine_name, alq_interface, status) bind(C, name='CreateAlquimiaInterface')
@@ -217,10 +228,8 @@ module alquimia_fortran_interface_mod
     interface
       subroutine GetAuxiliaryOutput(pft_engine_state,props,state,aux_data,aux_out,status) bind(C)
         use, intrinsic :: iso_c_binding, only : c_ptr
-        use AlquimiaContainers_module, only : AlquimiaSizes,AlquimiaProblemMetaData,AlquimiaProperties,&
-                 AlquimiaState,AlquimiaAuxiliaryData,AlquimiaAuxiliaryOutputData, AlquimiaEngineStatus,&
-                 AlquimiaGeochemicalCondition,AlquimiaEngineFunctionality
-        IMPORT
+        use AlquimiaContainers_module, only : AlquimiaProperties,&
+                 AlquimiaState,AlquimiaAuxiliaryData,AlquimiaAuxiliaryOutputData, AlquimiaEngineStatus
         implicit none
         type(c_ptr) :: pft_engine_state
         type(AlquimiaProperties) :: props
@@ -241,5 +250,129 @@ module alquimia_fortran_interface_mod
         type(AlquimiaEngineStatus) :: status
       end subroutine
     end interface
-
+    
+  contains
+    
+    subroutine Alquimia_Fortran_setup(this,input_filename,hands_off,pft_engine_state,sizes,functionality,status)
+      use iso_c_binding, only : c_f_procpointer,c_char,c_bool,c_ptr,C_NULL_CHAR
+      use AlquimiaContainers_module, only : AlquimiaEngineStatus,AlquimiaSizes,AlquimiaEngineFunctionality,kAlquimiaMaxStringLength
+      implicit none
+      
+      class(AlquimiaFortranInterface) :: this
+      character(kind=c_char,len=kAlquimiaMaxStringLength) :: input_filename
+      logical(c_bool )              :: hands_off
+      type(c_ptr) :: pft_engine_state
+      type(AlquimiaSizes)     :: sizes
+      type(AlquimiaEngineFunctionality)  :: functionality
+      type(AlquimiaEngineStatus)  :: status
+      
+      procedure(Setup), pointer :: engine_Setup
+      
+      call c_f_procpointer(this%c_interface%Setup,engine_Setup)
+      call engine_Setup(trim(input_filename)//C_NULL_CHAR, hands_off, pft_engine_state, sizes, functionality, status)
+      
+    end subroutine Alquimia_Fortran_setup
+    
+    subroutine Alquimia_Fortran_Shutdown(this,pft_engine_state,status) 
+      use, intrinsic :: iso_c_binding, only : c_ptr,c_f_procpointer
+      use AlquimiaContainers_module, only : AlquimiaEngineStatus
+      
+      implicit none
+      class(AlquimiaFortranInterface) :: this
+      type(c_ptr) :: pft_engine_state
+      type (AlquimiaEngineStatus), intent(out) ::  status
+      
+      procedure(Shutdown), pointer :: engine_Shutdown
+      
+      call c_f_procpointer(this%c_interface%Shutdown,engine_Shutdown)
+      call engine_shutdown(pft_engine_state,status)
+      
+    end subroutine Alquimia_Fortran_Shutdown
+      
+      
+    subroutine Alquimia_Fortran_ProcessCondition(this,pft_engine_state,condition,props,state,aux_data,status)
+      use, intrinsic :: iso_c_binding, only : c_ptr,c_f_procpointer
+      use AlquimiaContainers_module, only : AlquimiaProperties,&
+               AlquimiaState,AlquimiaAuxiliaryData, AlquimiaEngineStatus,&
+               AlquimiaGeochemicalCondition
+      implicit none
+      class(AlquimiaFortranInterface) :: this
+      type(c_ptr) :: pft_engine_state
+      type(AlquimiaGeochemicalCondition) :: condition
+      type(AlquimiaProperties) :: props
+      type(AlquimiaState) :: state
+      type(AlquimiaAuxiliaryData) :: aux_data
+      type(AlquimiaEngineStatus) :: status
+      
+      procedure(ProcessCondition), pointer :: engine_ProcessCondition
+      
+      call c_f_procpointer(this%c_interface%ProcessCondition,engine_ProcessCondition)
+      call engine_ProcessCondition(pft_engine_state,condition,props,state,aux_data,status)
+    end subroutine
+    
+  subroutine Alquimia_Fortran_ReactionStepOperatorSplit(this,pft_engine_state, delta_t, props, state, aux_data, status)
+    use, intrinsic :: iso_c_binding, only : c_ptr, c_double,c_f_procpointer
+    use AlquimiaContainers_module, only : AlquimiaSizes,AlquimiaProblemMetaData,AlquimiaProperties,&
+             AlquimiaState,AlquimiaAuxiliaryData,AlquimiaAuxiliaryOutputData, AlquimiaEngineStatus,&
+             AlquimiaGeochemicalCondition,AlquimiaEngineFunctionality
+    implicit none
+    class(AlquimiaFortranInterface) :: this
+    type(c_ptr) :: pft_engine_state
+    real(c_double) :: delta_t
+    type(AlquimiaProperties) :: props
+    type(AlquimiaState) :: state
+    type(AlquimiaAuxiliaryData) :: aux_data
+    type(AlquimiaEngineStatus) :: status
+    
+    procedure(ReactionStepOperatorSplit), pointer :: engine_ReactionStepOperatorSplit
+    
+    call c_f_procpointer(this%c_interface%ReactionStepOperatorSplit,engine_ReactionStepOperatorSplit)
+    call engine_ReactionStepOperatorSplit(pft_engine_state, delta_t, props, state, aux_data, status)
+  end subroutine
+  
+  subroutine Alquimia_Fortran_GetAuxiliaryOutput(this,pft_engine_state,props,state,aux_data,aux_out,status)
+    use, intrinsic :: iso_c_binding, only : c_ptr,c_f_procpointer
+    use AlquimiaContainers_module, only : AlquimiaProperties,&
+             AlquimiaState,AlquimiaAuxiliaryData,AlquimiaAuxiliaryOutputData, AlquimiaEngineStatus
+    implicit none
+    class(AlquimiaFortranInterface) :: this
+    type(c_ptr) :: pft_engine_state
+    type(AlquimiaProperties) :: props
+    type(AlquimiaState) :: state
+    type(AlquimiaAuxiliaryData) :: aux_data
+    type(AlquimiaAuxiliaryOutputData) :: aux_out
+    type(AlquimiaEngineStatus) :: status
+    
+    procedure(GetAuxiliaryOutput), pointer :: engine_GetAuxiliaryOutput
+    
+    call c_f_procpointer(this%c_interface%GetAuxiliaryOutput,engine_GetAuxiliaryOutput)
+    call engine_GetAuxiliaryOutput(pft_engine_state,props,state,aux_data,aux_out,status)
+  end subroutine
+  
+  subroutine Alquimia_Fortran_GetProblemMetaData(this,pft_engine_state, meta_data, status)
+    use, intrinsic :: iso_c_binding, only : c_ptr,c_f_procpointer
+    use AlquimiaContainers_module, only : AlquimiaProblemMetaData,AlquimiaEngineStatus
+    implicit none
+    class(AlquimiaFortranInterface) :: this
+    type(c_ptr) :: pft_engine_state
+    type(AlquimiaProblemMetaData) :: meta_data
+    type(AlquimiaEngineStatus) :: status
+    
+    procedure(GetProblemMetaData), pointer :: engine_GetProblemMetaData
+    
+    call c_f_procpointer(this%c_interface%GetProblemMetaData,engine_GetProblemMetaData)
+    call engine_GetProblemMetaData(pft_engine_state, meta_data, status)
+  end subroutine
+  
+  subroutine Create_Fortran_Alquimia_Interface(this,engine_name, status)
+    use AlquimiaContainers_module, only : AlquimiaEngineStatus,kAlquimiaMaxStringLength
+    use iso_C_binding, only: c_char,c_null_char
+    implicit none
+    class(AlquimiaFortranInterface) :: this
+    character(kind=c_char,len=kAlquimiaMaxStringLength) :: engine_name
+    type(AlquimiaEngineStatus)   :: status
+    
+    call CreateAlquimiaInterface(trim(engine_name)//C_NULL_CHAR, this%c_interface, status)
+  end subroutine
+  
 end module alquimia_fortran_interface_mod
