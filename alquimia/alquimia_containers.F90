@@ -63,6 +63,7 @@ module AlquimiaContainers_module
   integer (c_int), parameter :: kAlquimiaErrorUnknownConstraintName = 2
   integer (c_int), parameter :: kAlquimiaErrorUnsupportedFunctionality = 3
   integer (c_int), parameter :: kAlquimiaErrorEngineIntegrity = 4577
+  integer (c_int), parameter :: kAlquimiaErrorDidntConverge = 100
 
   character (13), parameter :: kAlquimiaStringTotalAqueous = 'total_aqueous'
   character (12), parameter :: kAlquimiaStringTotalSorbed = 'total_sorbed'

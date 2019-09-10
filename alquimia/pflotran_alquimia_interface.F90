@@ -518,6 +518,28 @@ subroutine ReactionStepOperatorSplit(pft_engine_state, &
        engine_state%material_auxvar, tran_xx, &
        num_newton_iterations, engine_state%reaction, &
        engine_state%option)
+       
+   ! Copy the diagnostic information into the status object.
+   ! PFlotran doesn't do anything really fancy in its Newton step, so
+   ! the numbers of RHS evaluations, Jacobian evaluations, and Newton 
+   ! iterations are all the same.
+   ! BSulman: Edited RReact so it returns a negative num iterations if it failed to converged
+   if(num_newton_iterations<0) then
+     status%error = kAlquimiaErrorDidntConverge
+     status%converged = .false.
+     status%num_rhs_evaluations = -num_newton_iterations
+     status%num_jacobian_evaluations = -num_newton_iterations
+     status%num_newton_iterations = -num_newton_iterations
+     call f_c_string_ptr("ERROR: RReact did not converge", &
+          status%message, kAlquimiaMaxStringLength)
+      return
+   else
+     status%error = kAlquimiaNoError
+     status%converged = .true.
+     status%num_rhs_evaluations = num_newton_iterations
+     status%num_jacobian_evaluations = num_newton_iterations
+     status%num_newton_iterations = num_newton_iterations
+   endif
 
   call RUpdateKineticState(engine_state%rt_auxvar, engine_state%global_auxvar, &
        engine_state%material_auxvar, engine_state%reaction, engine_state%option)
@@ -529,15 +551,7 @@ subroutine ReactionStepOperatorSplit(pft_engine_state, &
        porosity, &
        state, aux_data)
 
-  ! Copy the diagnostic information into the status object.
-  ! PFlotran doesn't do anything really fancy in its Newton step, so
-  ! the numbers of RHS evaluations, Jacobian evaluations, and Newton 
-  ! iterations are all the same.
-  status%error = kAlquimiaNoError
-  status%converged = .true.
-  status%num_rhs_evaluations = num_newton_iterations
-  status%num_jacobian_evaluations = num_newton_iterations
-  status%num_newton_iterations = num_newton_iterations
+
 
 end subroutine ReactionStepOperatorSplit
 

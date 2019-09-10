@@ -52,4 +52,5 @@ const int kAlquimiaErrorInvalidEngine = 1;
 const int kAlquimiaErrorUnknownConstraintName = 2;
 const int kAlquimiaErrorUnsupportedFunctionality = 3;
 const int kAlquimiaErrorEngineIntegrity = 4577;
+const int kAlquimiaErrorDidntConverge = 100;
 
