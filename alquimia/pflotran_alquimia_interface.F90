@@ -696,6 +696,12 @@ subroutine GetProblemMetaData(pft_engine_state, meta_data, status)
 
   use AlquimiaContainers_module
 
+  use Reaction_Aux_module, only : general_rxn_type
+  use Reaction_Microbial_Aux_module, only : microbial_rxn_type
+  use Reaction_Sandbox_Base_class, only : reaction_sandbox_base_type
+  use Reaction_Sandbox_SomDec_class, only : reaction_sandbox_somdec_type, somdec_reaction_type
+  use Reaction_Sandbox_Module, only : rxn_sandbox_list
+
   implicit none
 
   ! function parameters
@@ -711,6 +717,10 @@ subroutine GetProblemMetaData(pft_engine_state, meta_data, status)
   integer :: i, list_size, id
   integer(c_int), pointer :: idata(:)
   type(PFloTranEngineState), pointer :: engine_state
+  type(general_rxn_type), pointer :: cur_gen_rxn
+  type(microbial_rxn_type), pointer :: cur_mic_rxn
+  class(reaction_sandbox_base_type), pointer :: cur_reaction
+  type(somdec_reaction_type), pointer :: cur_somdec_rxn
 
   !write (*, '(a)') "PFloTran_Alquimia_GetEngineMetaData() :"
 
@@ -858,6 +868,57 @@ subroutine GetProblemMetaData(pft_engine_state, meta_data, status)
           trim(engine_state%reaction%primary_species_names(id)), &
           name, kAlquimiaMaxStringLength)
   end do
+  
+  !
+  ! aqueous kinetic names
+  !
+  list_size = meta_data%aqueous_kinetic_names%size
+  call c_f_pointer(meta_data%aqueous_kinetic_names%data, name_list, &
+       (/list_size/))
+   ! General reactions
+   cur_gen_rxn => engine_state%reaction%general_rxn_list
+   i=1
+   do
+     if (.not.associated(cur_gen_rxn)) exit
+     call c_f_pointer(name_list(i), name)
+     call f_c_string_chars( &
+          trim(cur_gen_rxn%reaction), &
+          name, kAlquimiaMaxStringLength)
+    cur_gen_rxn => cur_gen_rxn%next
+    i = i+1
+   enddo
+   ! Microbial reactions
+   cur_mic_rxn => engine_state%reaction%microbial%microbial_rxn_list
+   do
+     if (.not.associated(cur_mic_rxn)) exit
+     call c_f_pointer(name_list(i), name)
+     call f_c_string_chars( &
+          trim(cur_mic_rxn%reaction), &
+          name, kAlquimiaMaxStringLength)
+    cur_mic_rxn => cur_mic_rxn%next
+    i = i+1
+   enddo
+  ! SOMDEC sandbox reactions
+  cur_reaction => rxn_sandbox_list
+  do
+    if (.not.associated(cur_reaction)) exit
+    select type(cur_reaction)
+    type is (reaction_sandbox_somdec_type)
+      cur_somdec_rxn => cur_reaction%rxn
+      do
+        if (.not.associated(cur_somdec_rxn)) exit
+        call c_f_pointer(name_list(i), name)
+        call f_c_string_chars( &
+             trim(cur_somdec_rxn%upstream_pool_name)//" decay (SOMDEC sandbox)", &
+             name, kAlquimiaMaxStringLength)
+        i = i+1
+        cur_somdec_rxn => cur_somdec_rxn%next
+       enddo
+    end select
+    cur_reaction => cur_reaction%next
+    
+  enddo
+
 
   status%error = 0
 end subroutine GetProblemMetaData
@@ -960,12 +1021,18 @@ subroutine SetAlquimiaSizes(reaction, sizes)
   use AlquimiaContainers_module, only : AlquimiaSizes
 
   use Reaction_aux_module, only : reaction_type
+  use Reaction_Sandbox_SomDec_class, only : reaction_sandbox_somdec_type
+  use Reaction_Sandbox_Base_class, only : reaction_sandbox_base_type
+  use Reaction_Sandbox_Module, only : rxn_sandbox_list
 
   implicit none
 
   ! function parameters
   type (reaction_type), intent(in) :: reaction
   type (AlquimiaSizes), intent(out) :: sizes
+  
+  ! local variables
+  class(reaction_sandbox_base_type), pointer :: cur_reaction
 
 ! This may need to change to reaction%naqcomp if there are colloids and/or immobile species defined
   sizes%num_primary = reaction%ncomp
@@ -976,7 +1043,17 @@ subroutine SetAlquimiaSizes(reaction, sizes)
   end if
   sizes%num_minerals = reaction%mineral%nkinmnrl
   sizes%num_aqueous_complexes = reaction%neqcplx
-  sizes%num_aqueous_kinetics = reaction%ngeneral_rxn
+  ! Defining kinetic reactions to include general, microbial, and SOMDEC reactions (although SOMdec is not really aqueous)
+  sizes%num_aqueous_kinetics = reaction%ngeneral_rxn + reaction%microbial%nrxn
+  cur_reaction => rxn_sandbox_list
+  do
+    if (.not.associated(cur_reaction)) exit
+    select type(cur_reaction)
+    type is (reaction_sandbox_somdec_type)
+      sizes%num_aqueous_kinetics = sizes%num_aqueous_kinetics + cur_reaction%nrxn
+    end select
+    cur_reaction => cur_reaction%next
+  enddo
   sizes%num_surface_sites = reaction%surface_complexation%nsrfcplxrxn
   sizes%num_ion_exchange_sites = reaction%neqionxrxn
   sizes%num_isotherm_species = reaction%neqkdrxn
@@ -1491,6 +1568,12 @@ subroutine CopyAlquimiaToAuxVars(copy_auxdata, hands_off, &
   use Reactive_Transport_Aux_module, only : reactive_transport_auxvar_type
   use Global_Aux_module, only : global_auxvar_type
   use Material_Aux_class, only : material_auxvar_type
+  
+  use Reaction_aux_module, only : reaction_type
+  use Reaction_Sandbox_SomDec_class, only : reaction_sandbox_somdec_type
+  use Reaction_Sandbox_Base_class, only : reaction_sandbox_base_type
+  use Reaction_Sandbox_Module, only : rxn_sandbox_list
+
 
   implicit none
 
@@ -1509,6 +1592,8 @@ subroutine CopyAlquimiaToAuxVars(copy_auxdata, hands_off, &
   real (c_double), pointer :: data(:)
   integer :: i
   PetscInt, parameter :: phase_index = 1
+  
+  class(reaction_sandbox_base_type), pointer :: cur_reaction
 
   !write (*, '(a)') "PFloTran_Alquimia_CopyAlquimiaToAuxVars() :"
 
@@ -1622,10 +1707,25 @@ subroutine CopyAlquimiaToAuxVars(copy_auxdata, hands_off, &
   !
   call c_f_pointer(prop%aqueous_kinetic_rate_cnst%data, data, &
        (/prop%aqueous_kinetic_rate_cnst%size/))
-  do i = 1, prop%aqueous_kinetic_rate_cnst%size
+  ! This was redefined to include general, microbial, and SOMDEC reactions so go through one by one
+  do i = 1, reaction%ngeneral_rxn
       reaction%general_kf(i) = data(i)
       reaction%general_kr(i) = 0.0d0
   end do
+  do i=1, reaction%microbial%nrxn
+    reaction%microbial%rate_constant(i) = data(i+reaction%ngeneral_rxn)
+  end do
+  cur_reaction => rxn_sandbox_list
+  do
+    if (.not.associated(cur_reaction)) exit
+    select type(cur_reaction)
+    type is (reaction_sandbox_somdec_type)
+      do i=1,cur_reaction%nrxn
+        cur_reaction%rate_constant(i) = data(i+reaction%ngeneral_rxn+reaction%microbial%nrxn)
+       enddo
+    end select
+    cur_reaction => cur_reaction%next
+  enddo
 
   end if if_hands_off
   
