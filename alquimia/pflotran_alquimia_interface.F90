@@ -476,6 +476,7 @@ subroutine ReactionStepOperatorSplit(pft_engine_state, &
   PetscInt :: i, num_newton_iterations
   PetscInt, parameter :: phase_index = 1
   logical, parameter :: copy_auxdata = .true.
+  PetscBool :: RREACT_success
 
   call c_f_pointer(pft_engine_state, engine_state)
   if (engine_state%integrity_check /= integrity_check_value) then
@@ -517,19 +518,19 @@ subroutine ReactionStepOperatorSplit(pft_engine_state, &
   call RReact(engine_state%rt_auxvar, engine_state%global_auxvar, &
        engine_state%material_auxvar, tran_xx, &
        num_newton_iterations, engine_state%reaction, &
-       engine_state%option)
+       engine_state%option,RReact_success)
        
    ! Copy the diagnostic information into the status object.
    ! PFlotran doesn't do anything really fancy in its Newton step, so
    ! the numbers of RHS evaluations, Jacobian evaluations, and Newton 
    ! iterations are all the same.
    ! BSulman: Edited RReact so it returns a negative num iterations if it failed to converged
-   if(num_newton_iterations<0) then
+   if(.not. RREACT_success) then
      status%error = kAlquimiaErrorDidntConverge
      status%converged = .false.
-     status%num_rhs_evaluations = -num_newton_iterations
-     status%num_jacobian_evaluations = -num_newton_iterations
-     status%num_newton_iterations = -num_newton_iterations
+     status%num_rhs_evaluations = num_newton_iterations
+     status%num_jacobian_evaluations = num_newton_iterations
+     status%num_newton_iterations = num_newton_iterations
      call f_c_string_ptr("ERROR: RReact did not converge", &
           status%message, kAlquimiaMaxStringLength)
       return
