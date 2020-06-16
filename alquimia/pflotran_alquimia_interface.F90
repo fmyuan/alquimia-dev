@@ -909,9 +909,16 @@ subroutine GetProblemMetaData(pft_engine_state, meta_data, status)
       do
         if (.not.associated(cur_somdec_rxn)) exit
         call c_f_pointer(name_list(i), name)
-        call f_c_string_chars( &
-             trim(cur_somdec_rxn%upstream_pool_name)//" decay (SOMDEC sandbox)", &
-             name, kAlquimiaMaxStringLength)
+        if(associated(cur_somdec_rxn%downstream_pools)) then
+          call f_c_string_chars( &
+               trim(cur_somdec_rxn%upstream_pool_name)//" decay to "//&
+                  trim(cur_somdec_rxn%downstream_pools%name)//" (SOMDEC sandbox)", &
+               name, kAlquimiaMaxStringLength)
+        else
+          call f_c_string_chars( &
+               trim(cur_somdec_rxn%upstream_pool_name)//" decay to CO2 (SOMDEC sandbox)", &
+               name, kAlquimiaMaxStringLength)
+        endif
         i = i+1
         cur_somdec_rxn => cur_somdec_rxn%next
        enddo
