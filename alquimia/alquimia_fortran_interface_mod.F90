@@ -167,7 +167,7 @@ module alquimia_fortran_interface_mod
       IMPORT
       implicit none
       character(kind=c_char) :: input_filename(*)
-      logical(c_bool )              :: hands_off
+      logical(c_bool ),value              :: hands_off
       type(c_ptr) :: pft_engine_state
       type(AlquimiaSizes)     :: sizes
       type(AlquimiaEngineFunctionality)  :: functionality
@@ -260,7 +260,7 @@ module alquimia_fortran_interface_mod
       
       class(AlquimiaFortranInterface) :: this
       character(kind=c_char,len=kAlquimiaMaxStringLength) :: input_filename
-      logical(c_bool )              :: hands_off
+      logical(c_bool )    ,value          :: hands_off
       type(c_ptr) :: pft_engine_state
       type(AlquimiaSizes)     :: sizes
       type(AlquimiaEngineFunctionality)  :: functionality

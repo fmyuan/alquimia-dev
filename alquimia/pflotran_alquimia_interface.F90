@@ -1408,7 +1408,7 @@ function ConvertAlquimiaConditionToPflotran(&
   use Transport_Constraint_module, only : tran_constraint_type, TranConstraintCreate, &
        CONSTRAINT_FREE, CONSTRAINT_TOTAL, CONSTRAINT_TOTAL_SORB, &
        CONSTRAINT_PH, CONSTRAINT_MINERAL, &
-       CONSTRAINT_GAS, CONSTRAINT_CHARGE_BAL
+       CONSTRAINT_GAS, CONSTRAINT_CHARGE_BAL, CONSTRAINT_TOTAL_AQ_PLUS_SORB
   use Reaction_Immobile_Aux_module, only : immobile_constraint_type, ImmobileConstraintCreate
   use petscsys
 
@@ -1502,6 +1502,8 @@ function ConvertAlquimiaConditionToPflotran(&
 
        else if (StringCompareIgnoreCase(constraint_type, kAlquimiaStringTotalSorbed)) then
           pft_aq_species_constraint%constraint_type(i) = CONSTRAINT_TOTAL_SORB
+        else if (StringCompareIgnoreCase(constraint_type, kAlquimiaStringTotalAqueousPlusSorbed)) then
+           pft_aq_species_constraint%constraint_type(i) = CONSTRAINT_TOTAL_AQ_PLUS_SORB
        else if (StringCompareIgnoreCase(constraint_type, kAlquimiaStringPH)) then
           pft_aq_species_constraint%constraint_type(i) = CONSTRAINT_PH
 
