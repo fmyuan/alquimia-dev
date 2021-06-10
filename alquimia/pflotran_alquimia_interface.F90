@@ -737,6 +737,12 @@ subroutine GetProblemMetaData(pft_engine_state, meta_data, status)
 
   use Reaction_Aux_module, only : general_rxn_type
   use Reaction_Microbial_Aux_module, only : microbial_rxn_type
+  
+  use Reaction_Sandbox_Base_class, only : reaction_sandbox_base_type
+#ifdef PFLOTRAN_SOMDEC
+  use Reaction_Sandbox_SomDec_class, only : reaction_sandbox_somdec_type, somdec_reaction_type
+#endif
+  use Reaction_Sandbox_Module, only : rxn_sandbox_list
 
   implicit none
 
@@ -755,6 +761,10 @@ subroutine GetProblemMetaData(pft_engine_state, meta_data, status)
   type(PFLOTRANEngineState), pointer :: engine_state
   type(general_rxn_type), pointer :: cur_gen_rxn
   type(microbial_rxn_type), pointer :: cur_mic_rxn
+  class(reaction_sandbox_base_type), pointer :: cur_reaction
+#ifdef PFLOTRAN_SOMDEC
+  type(somdec_reaction_type), pointer :: cur_somdec_rxn
+#endif
 
   !write (*, '(a)') "PFLOTRAN_Alquimia_GetEngineMetaData() :"
 
@@ -946,6 +956,34 @@ subroutine GetProblemMetaData(pft_engine_state, meta_data, status)
   ! coming soon
   
  
+  ! SOMDEC sandbox reactions
+  cur_reaction => rxn_sandbox_list
+  do
+    if (.not.associated(cur_reaction)) exit
+    select type(cur_reaction)
+#ifdef PFLOTRAN_SOMDEC
+    type is (reaction_sandbox_somdec_type)
+      cur_somdec_rxn => cur_reaction%rxn
+      do
+        if (.not.associated(cur_somdec_rxn)) exit
+        call c_f_pointer(name_list(i), name)
+        if(associated(cur_somdec_rxn%downstream_pools)) then
+          call f_c_string_chars( &
+               trim(cur_somdec_rxn%upstream_pool_name)//" decay to "//&
+                  trim(cur_somdec_rxn%downstream_pools%name)//" (SOMDEC sandbox)", &
+               name, kAlquimiaMaxStringLength)
+        else
+          call f_c_string_chars( &
+               trim(cur_somdec_rxn%upstream_pool_name)//" decay to CO2 (SOMDEC sandbox)", &
+               name, kAlquimiaMaxStringLength)
+        endif
+        i = i+1
+        cur_somdec_rxn => cur_somdec_rxn%next
+       enddo
+#endif
+    end select
+    cur_reaction => cur_reaction%next
+  enddo
 
   status%error = 0
 end subroutine GetProblemMetaData
@@ -1056,11 +1094,20 @@ subroutine SetAlquimiaSizes(reaction, sizes)
 
   use Reaction_aux_module, only : reaction_rt_type
 
+#ifdef PFLOTRAN_SOMDEC
+  use Reaction_Sandbox_SomDec_class, only : reaction_sandbox_somdec_type
+#endif
+  use Reaction_Sandbox_Base_class, only : reaction_sandbox_base_type
+  use Reaction_Sandbox_Module, only : rxn_sandbox_list
+
   implicit none
 
   ! function parameters
   class (reaction_rt_type), intent(in) :: reaction
   type (AlquimiaSizes), intent(out) :: sizes
+
+  ! local variables
+  class(reaction_sandbox_base_type), pointer :: cur_reaction
 
 ! This may need to change to reaction%naqcomp if there are colloids and/or immobile species defined
   sizes%num_primary = reaction%ncomp
@@ -1071,7 +1118,21 @@ subroutine SetAlquimiaSizes(reaction, sizes)
   end if
   sizes%num_minerals = reaction%mineral%nkinmnrl
   sizes%num_aqueous_complexes = reaction%neqcplx
+  ! Defining kinetic reactions to include general, microbial, and SOMDEC reactions (although SOMdec is not really aqueous)
   sizes%num_aqueous_kinetics = reaction%ngeneral_rxn + reaction%microbial%nrxn
+
+  cur_reaction => rxn_sandbox_list
+  do
+    if (.not.associated(cur_reaction)) exit
+    select type(cur_reaction)
+#ifdef PFLOTRAN_SOMDEC
+    type is (reaction_sandbox_somdec_type)
+      sizes%num_aqueous_kinetics = sizes%num_aqueous_kinetics + cur_reaction%nrxn
+#endif
+    end select
+    cur_reaction => cur_reaction%next
+  enddo
+
   sizes%num_surface_sites = reaction%surface_complexation%nsrfcplxrxn
   sizes%num_ion_exchange_sites = reaction%neqionxrxn
   sizes%num_isotherm_species = reaction%isotherm%neqkdrxn
@@ -1583,6 +1644,13 @@ subroutine CopyAlquimiaToAuxVars(copy_auxdata, hands_off, &
   use Global_Aux_module, only : global_auxvar_type
   use Material_Aux_module, only : material_auxvar_type
 
+#ifdef PFLOTRAN_SOMDEC 
+  use Reaction_Sandbox_SomDec_class, only : reaction_sandbox_somdec_type
+#endif
+  use Reaction_Sandbox_Base_class, only : reaction_sandbox_base_type
+  use Reaction_Sandbox_Module, only : rxn_sandbox_list
+
+
   implicit none
 
   ! function parameters
@@ -1600,6 +1668,8 @@ subroutine CopyAlquimiaToAuxVars(copy_auxdata, hands_off, &
   real (c_double), pointer :: data(:)
   integer :: i
   PetscInt, parameter :: phase_index = 1
+
+  class(reaction_sandbox_base_type), pointer :: cur_reaction
 
   !write (*, '(a)') "PFLOTRAN_Alquimia_CopyAlquimiaToAuxVars() :"
 
@@ -1718,6 +1788,7 @@ subroutine CopyAlquimiaToAuxVars(copy_auxdata, hands_off, &
   !
   call c_f_pointer(prop%aqueous_kinetic_rate_cnst%data, data, &
        (/prop%aqueous_kinetic_rate_cnst%size/))
+  ! This was redefined to include general, microbial, and SOMDEC reactions so go through one by one
   do i = 1, reaction%ngeneral_rxn
       reaction%general_kf(i) = data(i)
       reaction%general_kr(i) = 0.0d0
@@ -1725,6 +1796,19 @@ subroutine CopyAlquimiaToAuxVars(copy_auxdata, hands_off, &
   do i=1, reaction%microbial%nrxn
     reaction%microbial%rate_constant(i) = data(i+reaction%ngeneral_rxn)
   end do
+  cur_reaction => rxn_sandbox_list
+  do
+    if (.not.associated(cur_reaction)) exit
+    select type(cur_reaction)
+#ifdef PFLOTRAN_SOMDEC
+    type is (reaction_sandbox_somdec_type)
+      do i=1,cur_reaction%nrxn
+        cur_reaction%rate_constant(i) = data(i+reaction%ngeneral_rxn+reaction%microbial%nrxn)
+       enddo
+#endif
+    end select
+    cur_reaction => cur_reaction%next
+  enddo
 
   end if if_hands_off
   
