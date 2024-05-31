@@ -974,7 +974,7 @@ subroutine SetupPFLOTRANOptions(input_filename, option)
 
   use c_f_interface_module, only : c_f_string_chars
 
-  use Option_module, only : option_type
+  use Option_module, only : option_type, OptionInitPetsc
   use petscsys
   implicit none
 
@@ -1024,6 +1024,8 @@ subroutine SetupPFLOTRANOptions(input_filename, option)
   option%liquid_phase = 1
   option%reference_density(option%liquid_phase) = 997.16
   option%use_isothermal = PETSC_TRUE
+
+  call OptionInitPetsc(option)
 
 end subroutine SetupPFLOTRANOptions
 
