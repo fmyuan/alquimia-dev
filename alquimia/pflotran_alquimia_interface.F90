@@ -1075,6 +1075,8 @@ subroutine SetupPFLOTRANOptions(input_filename, option)
   option%flow%reference_density(option%liquid_phase) = 997.16
   option%use_isothermal = PETSC_TRUE
 
+  call OptionInitPetsc(option)
+
 end subroutine SetupPFLOTRANOptions
 
 ! **************************************************************************** !
