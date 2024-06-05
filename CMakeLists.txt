@@ -100,6 +100,7 @@ set(ALQUIMIA_HAVE_BOOL 1) # All reasonable C99 compilers have this now.
 if (APPLE EQUAL 1)
   set(SYS_FLAGS "-DAPPLE=1")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -framework Accelerate")
+  set(CMAKE_EXE_LINKER_FLAGS " -ld_classic ${CMAKE_EXE_LINKER_FLAGS}")
 else ()
   if (LINUX EQUAL 1)
     set(SYS_FLAGS "-DLINUX=1")
@@ -207,7 +208,6 @@ if (ALQUIMIA_NEED_PETSC)
 
   # Find PETSc.
   if (TPL_PETSC_INCLUDE_DIRS)
-
     # Validate the include directories we've been given.
     foreach(inc ${TPL_PETSC_INCLUDE_DIRS})
       if (NOT EXISTS ${inc})
