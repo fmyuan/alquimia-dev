@@ -68,7 +68,7 @@ module PFLOTRANAlquimiaInterface_module
   use Transport_Constraint_RT_module, only : tran_constraint_coupler_rt_type
 
   use PFLOTRAN_Constants_module
-#include "finclude/petscsys.h"
+!!#include "finclude/petscsys.h"
 #include "petsc/finclude/petscsys.h"
   implicit none
 
@@ -535,6 +535,9 @@ subroutine ReactionStepOperatorSplit(pft_engine_state, &
      guess(i) = engine_state%rt_auxvar%pri_molal(i)
   enddo
   do i = 1, reaction%immobile%nimmobile
+     ! note: since here 'guess' will pass into following 'RStep' call
+     !       'ZERO' values in (Un)PackAlquimiaAuxviliaryData() would cause zeroing of PFLOTRAN's immobile reactions
+     !  (2024-08: fmyuan@ornl)
      guess(i+reaction%offset_immobile) = engine_state%rt_auxvar%immobile(i)
   enddo
 
@@ -694,8 +697,10 @@ subroutine GetAuxiliaryOutput( &
      local_array(i) = engine_state%rt_auxvar%pri_molal(i)
   end do
   ! Immobile species have zero free ion conc by definition
+  ! (fmyuan@ornl) but data are likely passed around, so better having it while assign activity to zero
   do i = 1, engine_state%reaction%immobile%nimmobile
-    local_array(i+engine_state%reaction%offset_immobile) = 0.0
+    ! local_array(i+engine_state%reaction%offset_immobile) = 0.0
+     local_array(i) = engine_state%rt_auxvar%immobile(i)
  end do
 
   call c_f_pointer(aux_output%primary_activity_coeff%data, local_array, &
@@ -706,6 +711,7 @@ subroutine GetAuxiliaryOutput( &
   ! Immobile species have zero primary activity
   do i = 1, engine_state%reaction%immobile%nimmobile
     local_array(i+engine_state%reaction%offset_immobile) = 0.0
+    ! by multiplying this zero activity, it will make immobile Non-transportable
    end do
 
   !
@@ -1704,6 +1710,7 @@ subroutine CopyAlquimiaToAuxVars(copy_auxdata, hands_off, &
   ! sorbed primary
   if (reaction%neqsorb > 0) then
      call c_f_pointer(state%total_immobile%data, data, (/reaction%naqcomp/))
+     ! here implies that sorbed primary species are tied to 'immobiles' aq. phase - very cautious when use it.
      do i = 1, reaction%naqcomp
         rt_auxvar%total_sorb_eq(i) = data(i)
      end do
@@ -2007,11 +2014,13 @@ subroutine PackAlquimiaAuxiliaryData(reaction, rt_auxvar, aux_data)
      data(dindex) = rt_auxvar%pri_molal(i)
   end do
   
-  ! Fake these (0) for immobile species
+  ! Fake these (0) for immobile species - no more (2024-08: fmyuan@ornl)
   ! free ion
   do i = 1, reaction%immobile%nimmobile
      dindex = dindex + 1
-     data(dindex) = 0.0
+     !data(dindex) = 0.0    ! this may have issue when data is available actually
+                    ! since this may be called when copying data btw aux_vars which passing to RStep in pflotran
+     data(dindex) = rt_auxvar%immobile(i) ! (2024-08: fmyuan@ornl)
   end do
 
   ! primary activity coeff
@@ -2020,10 +2029,10 @@ subroutine PackAlquimiaAuxiliaryData(reaction, rt_auxvar, aux_data)
      data(dindex) = rt_auxvar%pri_act_coef(i)
   end do
   
-  ! Fake it for immobile species
+  ! immobile species
   do i = 1, reaction%immobile%nimmobile
      dindex = dindex + 1
-     data(dindex) = 0.0
+     data(dindex) = 0.0    ! this zero activity will allow immobile NON-transportable (2024-08: fmyuan@ornl)
   end do
 
   ! secondary aqueous complexe activity coeffs
@@ -2078,7 +2087,13 @@ subroutine UnpackAlquimiaAuxiliaryData(aux_data, reaction, rt_auxvar)
   end do
 
   ! Skip immobile species, which driver model thinks are primary species
-  dindex = dindex + reaction%immobile%nimmobile
+  !dindex = dindex + reaction%immobile%nimmobile
+  ! immobile species,  NO skip anymore (2024-08: fmyuan@ornl)
+  ! since this may be called when copying data btw aux_vars which passing to RStep in pflotran
+  do i = 1, reaction%immobile%nimmobile
+     dindex = dindex + 1
+     rt_auxvar%immobile(i) = data(dindex)
+  end do
 
   ! primary activity coeff
   do i = 1, reaction%naqcomp
@@ -2087,6 +2102,7 @@ subroutine UnpackAlquimiaAuxiliaryData(aux_data, reaction, rt_auxvar)
   end do
   
   dindex = dindex + reaction%immobile%nimmobile
+  ! no activity coeff for rt_auxvar%immobile (2024-08: fmyuan@ornl)
 
   ! aqueous complexes activity coeff
   do i = 1, reaction%neqcplx
